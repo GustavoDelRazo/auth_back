@@ -13,7 +13,7 @@ app = fastapi.FastAPI()
 security_bearer = HTTPBearer()
 
 origins = [
-    "https://8080-axelcarrill-herokufront-qk0iuo0zal5.ws-us106.gitpod.io"
+    "https://8080-gustavodelraz-authfront-9mni84dingg.ws-us106.gitpod.io"
 ]
 
 app.add_middleware(
