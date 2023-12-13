@@ -1,15 +1,16 @@
 import fastapi
 import sqlite3
 import hashlib
-from fastapi import Depends, HTTPException, Request, Cookie
-from fastapi.security import HTTPBearer
-from starlette.responses import JSONResponse  # Importa la clase JSONResponse
+from fastapi import Depends, HTTPException, Request
+from fastapi.security import HTTPBearer, HTTPBasic, HTTPBasicCredentials
+from starlette.responses import JSONResponse
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 
+security = HTTPBasic()
 app = fastapi.FastAPI()
 
-securityBearer = HTTPBearer()
+security_bearer = HTTPBearer()
 
 origins = [
     "https://8080-axelcarrill-herokufront-qk0iuo0zal5.ws-us106.gitpod.io"
@@ -22,13 +23,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-def md5_hash(text):
-    """Función para calcular el hash MD5 de una cadena"""
-    return hashlib.md5(text.encode()).hexdigest()
-
-# Almacenamiento de sesiones en memoria (no recomendado para producción)
-sessions = {}
 
 class Session:
     def __init__(self):
@@ -49,166 +43,168 @@ def get_connection():
     """Función para obtener una nueva conexión a la base de datos"""
     return sqlite3.connect("sql/contactos.db")
 
+def md5_hash(text):
+    """Función para calcular el hash MD5 de una cadena"""
+    return hashlib.md5(text.encode()).hexdigest()
+
 @app.get("/")
-def auth(credentials: HTTPBearer = Depends(securityBearer), session: Session = Depends()):
+def authenticate(credentials: HTTPBearer = Depends(security_bearer), session: Session = Depends()):
     """Autenticación con token fijo"""
     token = credentials.credentials
-    connx = get_connection()
-    c = connx.cursor()
-    c.execute('SELECT token FROM usuarios WHERE token = ?', (token,))
-    existe = c.fetchone()
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT token FROM usuarios WHERE token = ?', (token,))
+    exists = cursor.fetchone()
 
-    if existe is None:
+    if exists is None:
         raise HTTPException(status_code=401, detail="Not Authenticated")
     else:
         # Almacenar el token en la sesión
         session.token = token
-        # Almacenar la sesión en el diccionario (no recomendado para producción)
-        sessions[token] = session
-        return {"mensaje": "Hola Mundo"}
+        return {"message": "Hello World"}
 
-@app.post("/token", response_class=JSONResponse)  # Usa JSONResponse como clase de respuesta
-def get_token(username: str = fastapi.Form(...), password: str = fastapi.Form(...), session: Session = Depends()):
-    """Obtener token si las credenciales son correctas"""
-    connx = get_connection()
-    c = connx.cursor()
+@app.post("/token", response_class=JSONResponse)  
+def get_token(credentials: HTTPBasicCredentials = Depends(security), session: Session = Depends()):
+    username = credentials.username
+    password = credentials.password
+
+    conn = get_connection()
+    cursor = conn.cursor()
 
     hashed_password = md5_hash(password)
 
-    c.execute('SELECT * FROM usuarios WHERE username = ? AND password = ?', (username, hashed_password))
-    user_exists = c.fetchone()
+    cursor.execute('SELECT * FROM usuarios WHERE username = ? AND password = ?', (username, hashed_password))
+    user_exists = cursor.fetchone()
 
     if user_exists:
         token = user_exists[2]  # Suponiendo que el token está en la tercera columna de la tabla usuarios
         # Almacenar el token en la sesión
         session.token = token
-        # Almacenar la sesión en el diccionario (no recomendado para producción)
-        sessions[token] = session
 
-        # Devolver el token (y opcionalmente almacenarlo en el cliente)
         response = JSONResponse(content={"token": token})
-        # Puedes almacenar el token en una cookie o en el cuerpo de la respuesta, según tus necesidades.
-        # Aquí, se almacena en una cookie con httponly=True para mayor seguridad.
         response.set_cookie(key="token", value=token, httponly=True)
         return response
     else:
+        # En caso de credenciales incorrectas, eliminar la cookie
+        response = JSONResponse(content={"detail": "Not Authenticated"})
+        response.delete_cookie("token")
         raise HTTPException(status_code=401, detail="Not Authenticated")
 
-@app.post("/contactos", dependencies=[Depends(auth)])
-async def crear_contacto(contacto: Contacto):
+@app.post("/contactos", dependencies=[Depends(authenticate)])
+async def create_contact(contact: Contacto):
     """Crea un nuevo contacto."""
     try:
         # Verifica si el email ya existe en la base de datos
-        connx = get_connection()
-        c = connx.cursor()
-        c.execute('SELECT * FROM contactos WHERE email = ?', (contacto.email,))
-        existing_contact = c.fetchone()
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute('SELECT * FROM contactos WHERE email = ?', (contact.email,))
+        existing_contact = cursor.fetchone()
 
         if existing_contact:
-            raise HTTPException(status_code=400, detail={"mensaje": "El email ya existe"})
+            raise HTTPException(status_code=400, detail={"message": "Email already exists"})
 
         # Inserta el nuevo contacto en la base de datos
-        c.execute('INSERT INTO contactos (email, nombre, telefono) VALUES (?, ?, ?)',
-                  (contacto.email, contacto.nombre, contacto.telefono))
-        connx.commit()
+        cursor.execute('INSERT INTO contactos (email, nombre, telefono) VALUES (?, ?, ?)',
+                       (contact.email, contact.nombre, contact.telefono))
+        conn.commit()
 
-        return {"mensaje": "Contacto insertado correctamente"}
+        return {"message": "Contact inserted successfully"}
 
     except Exception as e:
-        raise HTTPException(status_code=400, detail={"mensaje": "Error al consultar los datos"})
+        raise HTTPException(status_code=400, detail={"message": "Error querying data"})
 
-@app.get("/contactos", dependencies=[Depends(auth)])
-async def obtener_contactos():
+@app.get("/contactos", dependencies=[Depends(authenticate)])
+async def get_contacts():
     """Obtiene todos los contactos."""
     try:
         # Consulta todos los contactos de la base de datos y los envía en un JSON
-        connx = get_connection()
-        c = connx.cursor()
-        c.execute('SELECT * FROM contactos')
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute('SELECT * FROM contactos')
         response = []
-        for row in c.fetchall():
-            contacto = {
+        for row in cursor.fetchall():
+            contact = {
                 "email": row[0],
                 "nombre": row[1],
                 "telefono": row[2]
             }
-            response.append(contacto)
+            response.append(contact)
 
         if response:
             return response
         else:
-            raise HTTPException(status_code=202, detail="No hay registros")
+            raise HTTPException(status_code=202, detail="No records found")
 
     except Exception as e:
-        raise HTTPException(status_code=400, detail={"mensaje": "Error al consultar los datos"})
+        raise HTTPException(status_code=400, detail={"message": "Error querying data"})
 
-@app.get("/contactos/{email}", dependencies=[Depends(auth)])
-async def obtener_contacto(email: str):
+@app.get("/contactos/{email}", dependencies=[Depends(authenticate)])
+async def get_contact(email: str):
     """Obtiene un contacto por su email."""
     try:
         # Consulta el contacto por su email
-        connx = get_connection()
-        c = connx.cursor()
-        c.execute('SELECT * FROM contactos WHERE email = ?', (email,))
-        row = c.fetchone()
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute('SELECT * FROM contactos WHERE email = ?', (email,))
+        row = cursor.fetchone()
 
         if row:
-            contacto = {
+            contact = {
                 "email": row[0],
                 "nombre": row[1],
                 "telefono": row[2]
             }
-            return contacto
+            return contact
         else:
-            raise HTTPException(status_code=404, detail={"mensaje": "El email no existe"})
+            raise HTTPException(status_code=404, detail={"message": "Email does not exist"})
 
     except Exception as e:
-        raise HTTPException(status_code=400, detail={"mensaje": "Error al consultar los datos"})
+        raise HTTPException(status_code=400, detail={"message": "Error querying data"})
 
-@app.put("/contactos/{email}", dependencies=[Depends(auth)])
-async def actualizar_contacto(email: str, contacto: Contacto):
+@app.put("/contactos/{email}", dependencies=[Depends(authenticate)])
+async def update_contact(email: str, contact: Contacto):
     """Actualiza un contacto."""
     try:
-        if contacto.nombre is None or contacto.telefono is None:
-            raise HTTPException(status_code=422, detail="Nombre y teléfono son campos obligatorios")
+        if contact.nombre is None or contact.telefono is None:
+            raise HTTPException(status_code=422, detail="Name and phone are required fields")
 
         # Verifica si el contacto con el email proporcionado existe
-        connx = get_connection()
-        c = connx.cursor()
-        c.execute('SELECT * FROM contactos WHERE email = ?', (email,))
-        existing_contact = c.fetchone()
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute('SELECT * FROM contactos WHERE email = ?', (email,))
+        existing_contact = cursor.fetchone()
 
         if not existing_contact:
-            raise HTTPException(status_code=404, detail={"mensaje": "El ID contacto no existe"})
+            raise HTTPException(status_code=404, detail={"message": "Contact ID does not exist"})
 
         # Actualiza el contacto en la base de datos
-        c.execute('UPDATE contactos SET nombre = ?, telefono = ? WHERE email = ?',
-                  (contacto.nombre, contacto.telefono, email))
-        connx.commit()
+        cursor.execute('UPDATE contactos SET nombre = ?, telefono = ? WHERE email = ?',
+                       (contact.nombre, contact.telefono, email))
+        conn.commit()
 
-        return {"mensaje": "Contacto actualizado correctamente"}
+        return {"message": "Contact updated successfully"}
 
     except Exception as e:
-        raise HTTPException(status_code=400, detail={"mensaje": "Error al consultar o actualizar los datos"})
+        raise HTTPException(status_code=400, detail={"message": "Error querying or updating data"})
 
-@app.delete("/contactos/{email}", dependencies=[Depends(auth)])
-async def eliminar_contacto(email: str):
+@app.delete("/contactos/{email}", dependencies=[Depends(authenticate)])
+async def delete_contact(email: str):
     """Elimina un contacto."""
     try:
         # Verifica si el contacto con el email proporcionado existe
-        connx = get_connection()
-        c = connx.cursor()
-        c.execute('SELECT * FROM contactos WHERE email = ?', (email,))
-        existing_contact = c.fetchone()
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute('SELECT * FROM contactos WHERE email = ?', (email,))
+        existing_contact = cursor.fetchone()
 
         if not existing_contact:
-            raise HTTPException(status_code=404, detail={"mensaje": "El email del contacto no existe"})
+            raise HTTPException(status_code=404, detail={"message": "Contact email does not exist"})
 
         # Elimina el contacto de la base de datos
-        c.execute('DELETE FROM contactos WHERE email = ?', (email,))
-        connx.commit()
+        cursor.execute('DELETE FROM contactos WHERE email = ?', (email,))
+        conn.commit()
 
-        return {"mensaje": "Contacto borrado correctamente"}
+        return {"message": "Contact deleted successfully"}
 
     except Exception as e:
-        raise HTTPException(status_code=400, detail={"mensaje": "Error al consultar o eliminar los datos"})
+        raise HTTPException(status_code=400, detail={"message": "Error querying or deleting data"})
