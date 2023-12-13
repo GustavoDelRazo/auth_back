@@ -18,4 +18,7 @@ CREATE TABLE usuarios (
 );
 
 INSERT INTO usuarios (username, password, token, timestamp) 
-VALUES ('oppie@gmail.com', 'a88730092144187f8d7b4d940456154a', '09b0ac835fe70eb1dc6d20d927af958d', CURRENT_TIMESTAMP);
+VALUES ('axel@gmail.com', '202cb962ac59075b964b07152d234b70', '09b0ac835fe70eb1dc6d20d927af958d', CURRENT_TIMESTAMP);
+
+INSERT INTO usuarios (username, password, token, timestamp) 
+VALUES ('juan@gmail.com', '827ccb0eea8a706c4c34a16891f84e7b', '09b0ac835fe70eb1dc6d20d927af958d', CURRENT_TIMESTAMP);

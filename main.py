@@ -12,7 +12,7 @@ app = fastapi.FastAPI()
 securityBearer = HTTPBearer()
 
 origins = [
-    "https://contactos-frontend-ajio.onrender.com"
+    "https://8080-axelcarrill-herokufront-qk0iuo0zal5.ws-us106.gitpod.io"
 ]
 
 app.add_middleware(
