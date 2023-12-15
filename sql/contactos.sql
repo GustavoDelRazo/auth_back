@@ -21,4 +21,4 @@ INSERT INTO usuarios (username, password, token, timestamp)
 VALUES ('brallan@gmail.com', '202cb962ac59075b964b07152d234b70', '8faa5dc3e625849d45ca9578d32dd683', CURRENT_TIMESTAMP);
 
 INSERT INTO usuarios (username, password, token, timestamp) 
-VALUES ('josue@gmail.com', '827ccb0eea8a706c4c34a16891f84e7b', '560faebe9b3219dddc0ac2b34a08371b', CURRENT_TIMESTAMP);
+VALUES ('josue@gmail.com', '202cb962ac59075b964b07152d234b70', '560faebe9b3219dddc0ac2b34a08371b', CURRENT_TIMESTAMP);
